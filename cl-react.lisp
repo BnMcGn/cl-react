@@ -19,14 +19,14 @@
   :nicknames (cl-react:find-dom-node))
 
 (defun cl-react:children-map (fn &optional context)
-  (chain |React| "Children" (map fn context)))
+  (chain #:|React| "Children" (map fn context)))
 
 (defun cl-react:children-for-each (fn &optional context)
-  (chain |React| "Children" (map fn context)))
+  (chain #:|React| "Children" (map fn context)))
 
 (defun cl-react:children-count ()
-  (chain |React| "Children" (count)))
+  (chain #:|React| "Children" (count)))
 
 (defun cl-react:children-only ()
-  (chain |React| "Children" (only)))
+  (chain #:|React| "Children" (only)))
 
