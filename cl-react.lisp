@@ -4,7 +4,9 @@
 
 (cl-react::define-react-function cl-react:create-factory (type))
 
-(cl-react::define-react-function cl-react:render (element container &optional callback))
+;(cl-react::define-react-function cl-react:render (element container &optional callback))
+(defun render (element container &optional callback)
+  (chain #:|ReactDOM| (#:render element container callback)))
 
 (cl-react::define-react-function cl-react:unmount-component-at-node (container))
 
