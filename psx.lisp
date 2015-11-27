@@ -37,92 +37,49 @@
   (let ((jsx-attr (or (getf *attr-synonyms* attr) attr)))
     (when (or (not (find jsx-attr *binary-attrs*)) value)
 	(list (make-symbol (string jsx-attr)) value))))
-	
 
-(defun parse-node (node)
-  (let (done attr props)
-    (if (atom node)
-	node
-	(do* ((tokens (rest node) (funcall (if done #'identity #'rest) tokens))
-	      (token (first tokens) (first tokens)))
-	     ((or done (null tokens))
-	      (list :type (first node) :props props :children tokens))
-	  (cond
-	    (attr
-	     (setf props (append (parse-attr attr token) props)
-		   attr nil))
-	    ((keywordp token)
-	     (setf attr token))
-	    (t
-	     (setf done t)))))))
+(defun format-attrs (attrs &key accum)
+  (if (null attrs)
+      (nreverse accum)
+      (multiple-value-bind (key val) (parse-attr (first attrs) (second attrs))
+        (if key
+            (format-attrs (cddr attrs) :accum (list* val key accum))
+            (format-attrs (cddr attrs) :accum accum)))))
 
-(defun traverse-tree (function tree)
-  (let ((stack (list (list :parent nil :child tree))))
-    (do ((top (pop stack) (pop stack)))
-	((null top))
-      (multiple-value-bind (node children) (apply function top)
-	(dolist (child children)
-	  (push (list :parent node :child child) stack))))))
-	  
-	    	      
-(defun parse-tree (tree)
-  (let (root parsed-node children)
-      (traverse-tree
-       (lambda (&key child parent)
-	 (setf parsed-node (parse-node child)
-	       children (and (listp parsed-node) (getf parsed-node :children)))
-	 (when (null root)
-	   (setf root parsed-node))
-	 (when children
-	   (setf (getf parsed-node :children) nil))
-	 (when parent
-	   (push parsed-node (getf parent :children)))
-	 (values parsed-node children))
-       tree)
-      root))
-		     
-  
 (defun dom-type-p (type)
   (find type +dom-types+))
 
-(defun compile-node (parsed-node)
-  (if (atom parsed-node)
-      parsed-node
-      (destructuring-bind (&key type props children) parsed-node
-	(let ((type-sym
-		(make-symbol (string type)))
-	       (props-obj
-		(cond
-		  (props `((create ,@props)))
-		  (children (list nil)))))
-	  (values
-	   (if (dom-type-p type)
-	       `(chain React DOM (,type-sym ,@props-obj))
-	       `(chain React (create-element ,type-sym ,@props-obj)))
-	   children)))))
+(defun divide-attributes/body (things &key accum)
+  "Divide a list at the point where key/value pairs stop occurring."
+  (if (keywordp (car things))
+      (divide-attributes/body (cddr things)
+                              :accum (list* (second things) (car things) accum))
+      (values (nreverse accum) things)))
 
-(defun compile-tree (parsed-tree)
-  (let ((adjacency-table (make-hash-table))
-	(root nil))
-    (traverse-tree
-     (lambda (&key parent child)
-       (multiple-value-bind (compiled-node children) (compile-node child)
-	 (push compiled-node (gethash parent adjacency-table))
-	 (values compiled-node children)))
-     parsed-tree)
-    (maphash
-     (lambda (parent children)
-       (if (null parent)
-	   (setf root (first children))
-	   (setf (cdr (last (car (last parent))))
-		 (if (rest children)
-		     `((list ,@children))
-		     `(,(first children))))))
-       adjacency-table)
-    root))
+(defun %call-body (element attribs body
+                   &aux (attribs (when attribs `(create ,@attribs)))
+                   (elementx (make-symbol (string element))))
+  (if (dom-type-p element)
+      `(chain React DOM (,elementx ,attribs ,@body))
+      `(chain React (create-element ,elementx ,attribs ,@body))))
+
+(defun proc-psx (code)
+  (multiple-value-bind (attributes body) (divide-attributes/body (cdr code))
+    (setf body
+          (loop for itm in body
+                collect (if (and (listp itm) (keywordp (car itm)))
+                            (proc-psx itm)
+                            itm)))
+    (%call-body (car code) (format-attrs attributes)
+                (if (rest body)
+                    `((list ,@body))
+                    (list (first body))))))
 
 (defun compile-psx (form)
-  (compile-tree (parse-tree form)))
+  (proc-psx form))
+
+;(defun compile-psx (form)
+;  (compile-tree (parse-tree form)))
 
 ;;; *******************************************************************************************
 
