@@ -41,7 +41,7 @@
 (defun format-attrs (attrs &key accum)
   (if (null attrs)
       (nreverse accum)
-      (multiple-value-bind (key val) (parse-attr (first attrs) (second attrs))
+      (destructuring-bind (key val) (parse-attr (first attrs) (second attrs))
         (if key
             (format-attrs (cddr attrs) :accum (list* val key accum))
             (format-attrs (cddr attrs) :accum accum)))))
@@ -55,7 +55,7 @@
       (divide-attributes/body (cddr things)
                               :accum (list* (second things) (car things) accum))
       (values (nreverse accum) things)))
-
+ 
 (defun %call-body (element attribs body
                    &aux (attribs (when attribs `(create ,@attribs)))
                    (elementx (make-symbol (string element))))
@@ -77,9 +77,6 @@
 
 (defun compile-psx (form)
   (proc-psx form))
-
-;(defun compile-psx (form)
-;  (compile-tree (parse-tree form)))
 
 ;;; *******************************************************************************************
 
