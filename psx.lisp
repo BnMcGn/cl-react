@@ -28,6 +28,12 @@
     :sup :table :tbody :td :textarea :tfoot :th :thead :time :title :tr :track :u
     :ul :var :video :wbr))
 
+(defparameter *react-types*
+  '(:fragment :-fragment))
+
+(defparameter *react-type-symbols*
+  '(:fragment -fragment))
+
 (defparameter *prop-synonyms*
   '(:readonly :read-only
     :class :class-name)
@@ -111,6 +117,9 @@
 (defun dom-type-p (type)
   (find type *dom-types*))
 
+(defun react-type-p (type)
+  (find type *react-types*))
+
 (defun compile-props (plist)
   (loop
      with key = nil
@@ -128,21 +137,41 @@
 	 (if prop-objs
 	     `(react:merge-objects ,@prop-objs)
 	     (list nil)))))
+
+(defun split-string (str delimiter)
+  (loop with substrs = (list nil)
+	for char across str
+	if (eql char delimiter)
+	  do (push nil substrs)
+	else
+	  do (push char (car substrs))
+	finally (return (loop for substr in (nreverse substrs)
+			      collect (coerce (nreverse substr) 'string)))))
        
 (defun compile-node (parsed-node)
   (if (psx-atom-p parsed-node)
       parsed-node
       (destructuring-bind (&key type props children) parsed-node
-	(let ((type-sym (make-symbol (string type)))
-	      (props-form (cond ((and (null children) (null props)) nil)
-				((null props) (list nil))
-				(t `(,(compile-props props)))))
-	      (children-form (cond ((null children) nil)
-				   ((rest children) (list (list 'array)))
-				   (t (list nil)))))
-	  (values (if (dom-type-p type)
-		      `(chain React DOM (,type-sym ,@props-form ,@children-form))
-		      `(chain React (create-element ,type-sym ,@props-form ,@children-form)))
+	(let* ((type-str (string type))
+	       (type-sym (make-symbol type-str))
+	       (props-form (cond ((and (null children) (null props)) nil)
+				 ((null props) (list nil))
+				 (t `(,(compile-props props)))))
+	       (children-form (cond ((null children) nil)
+				    ((rest children) (list (list 'array)))
+				    (t (list nil)))))
+	  (values (cond
+		    ((dom-type-p type)
+		     `(chain React DOM (,type-sym ,@props-form ,@children-form)))
+		    ((react-type-p type)
+		     (let ((react-type-sym (or (getf *react-type-symbols* type)
+					       type-sym)))
+		       `(chain React (create-element (ps:@ React ,react-type-sym) ,@props-form ,@children-form))))
+		    ((find #\. type-str)
+		     (let ((split-type (mapcar #'make-symbol (split-string type-str #\.))))
+		       `(chain React (create-element (ps:@ ,@split-type) ,@props-form ,@children-form))))
+		    (t
+		     `(chain React (create-element ,type-sym ,@props-form ,@children-form))))
 		  children)))))
 
 (defun push-compiled-child (child compiled-node)
